@@ -21,7 +21,7 @@ One script reproduces the article's two lab results on your own machine, in Dock
 ./bin/run-lab.sh
 ```
 
-Each check prints `PASS` or `FAIL`, and the script exits non-zero if any check fails. If Docker is not running or the port is taken, it stops straight away and says what to change. The lab containers are stopped when the script ends; set `KEEP_LAB_RUNNING=1` to leave them running and look around.
+Each check prints `PASS` or `FAIL`, and the script exits non-zero if any check fails. If Docker is not running, the port is taken or Docker is out of disk space, it stops straight away and says what to change. The lab containers are stopped when the script ends; set `KEEP_LAB_RUNNING=1` to leave them running and look around.
 
 Expected results on the tested versions:
 

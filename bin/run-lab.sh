@@ -35,7 +35,8 @@ echo "== Starting the lab (WordPress 7.1.3, PHP 8.3, MariaDB 11.4, WP-CLI 2.12.0
 echo "   The first run downloads the Docker images, which can take a few minutes."
 if ! up_log=$(docker compose up -d --quiet-pull 2>&1); then
 	printf '%s\n' "$up_log" >&2
-	die "The lab did not start. If port ${PORT} is in use, run again with LAB_PORT set to a free port, for example LAB_PORT=8127 ./bin/run-lab.sh"
+	docker compose logs --tail=5 db wordpress 2>/dev/null | grep -i -E 'error|space|denied|in use' >&2 || true
+	die "The lab did not start; Docker's messages are above. Common causes: port ${PORT} is in use (run again with LAB_PORT=8127 ./bin/run-lab.sh), or Docker has run out of disk space (free some in Docker Desktop, then run again)."
 fi
 ready=0
 for _ in $(seq 1 90); do
