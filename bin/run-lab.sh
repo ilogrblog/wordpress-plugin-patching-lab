@@ -6,7 +6,9 @@
 #   Part B: WP-CLI 2.12.0 update, checksum and rollback behaviour on a WordPress.org plugin.
 #
 # Everything runs in Docker on this machine. Nothing here connects to a live site.
-# Usage: ./bin/run-lab.sh        Clean up afterwards: docker compose down -v
+# Usage: ./bin/run-lab.sh
+#   The lab containers are stopped when the script ends. KEEP_LAB_RUNNING=1 leaves them running.
+#   Remove the containers and their data afterwards: docker compose down -v
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -19,10 +21,28 @@ check() { if [ "$2" = "$3" ]; then pass "$1 ($2)"; else fail "$1 (expected $3, g
 wpc() { docker compose exec -T cli wp "$@"; }
 inside() { docker compose exec -T cli "$@"; }
 
+die() { printf 'STOP  %s\n' "$1" >&2; exit 2; }
+for tool in docker curl openssl; do command -v "$tool" >/dev/null 2>&1 || die "$tool is not installed."; done
+docker info >/dev/null 2>&1 || die "Docker is not running. Start Docker and run the script again."
+docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required (the 'docker compose' command)."
+
+# Stop the lab when the script ends, including after an error or Ctrl+C, unless asked to keep it.
+# shellcheck disable=SC2317  # called by the EXIT trap below
+stop_lab() { [ "${KEEP_LAB_RUNNING:-0}" = "1" ] || docker compose stop >/dev/null 2>&1 || true; }
+trap stop_lab EXIT
+
 echo "== Starting the lab (WordPress 7.1.3, PHP 8.3, MariaDB 11.4, WP-CLI 2.12.0)"
 echo "   The first run downloads the Docker images, which can take a few minutes."
-docker compose up -d --quiet-pull >/dev/null 2>&1
-for _ in $(seq 1 60); do inside test -f wp-config.php 2>/dev/null && break; sleep 2; done
+if ! up_log=$(docker compose up -d --quiet-pull 2>&1); then
+	printf '%s\n' "$up_log" >&2
+	die "The lab did not start. If port ${PORT} is in use, run again with LAB_PORT set to a free port, for example LAB_PORT=8127 ./bin/run-lab.sh"
+fi
+ready=0
+for _ in $(seq 1 90); do
+	if inside test -f wp-config.php >/dev/null 2>&1; then ready=1; break; fi
+	sleep 2
+done
+[ "$ready" = "1" ] || die "WordPress did not finish starting within 3 minutes. Check 'docker compose logs wordpress'."
 if ! wpc core is-installed 2>/dev/null; then
 	# A random admin password, never printed: nobody needs to log in to run the lab.
 	wpc core install --url="$URL" --title="Plugin patching lab" --admin_user=labadmin \
@@ -34,8 +54,9 @@ check "Plugin Check version" "$(wpc plugin get plugin-check --field=version)" "2
 # Errors and warnings from Plugin Check, leaving out the missing readme and text-domain items,
 # which come from the lab's folder names rather than from the code.
 counts() {
+	# The braces keep a run with no findings from stopping the script (grep exits 1 when nothing matches).
 	wpc plugin check "$1" --format=csv --fields=type,code 2>/dev/null \
-		| grep -E '^(ERROR|WARNING),' | grep -v -i textdomain | grep -v no_plugin_readme \
+		| { grep -E '^(ERROR|WARNING),' || true; } | { grep -v -i -e textdomain -e no_plugin_readme || true; } \
 		| awk -F, '{ if ($1 == "ERROR") e++; else w++ } END { printf "%d errors, %d warnings", e, w }'
 }
 fresh() { inside rm -rf "wp-content/plugins/$1"; }
@@ -101,5 +122,6 @@ wpc plugin list --fields=name,wporg_status --format=table 2>/dev/null || true
 
 echo
 if [ "$fails" -eq 0 ]; then echo "All checks passed."; else echo "$fails check(s) failed."; fi
-echo "Clean up with: docker compose down -v"
+if [ "${KEEP_LAB_RUNNING:-0}" = "1" ]; then echo "The lab is still running at ${URL}."; else echo "The lab containers have been stopped."; fi
+echo "Remove the containers and their data with: docker compose down -v"
 exit $(( fails > 0 ? 1 : 0 ))

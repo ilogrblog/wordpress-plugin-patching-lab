@@ -21,7 +21,9 @@ One script reproduces the article's two lab results on your own machine, in Dock
 ./bin/run-lab.sh
 ```
 
-Each check prints `PASS` or `FAIL`, and the script exits non-zero if any check fails. Expected results on the tested versions:
+Each check prints `PASS` or `FAIL`, and the script exits non-zero if any check fails. If Docker is not running or the port is taken, it stops straight away and says what to change. The lab containers are stopped when the script ends; set `KEEP_LAB_RUNNING=1` to leave them running and look around.
+
+Expected results on the tested versions:
 
 | Check | Expected |
 | --- | --- |
@@ -35,7 +37,7 @@ Each check prints `PASS` or `FAIL`, and the script exits non-zero if any check f
 
 The counts leave out a missing `readme.txt` and text-domain notices, which come from the lab's folder names rather than from the code. The last section prints `wporg_status` for information: the article explains why custom plugins can show "closed".
 
-Clean up afterwards (removes the containers and their data):
+Remove everything afterwards (the containers and their data):
 
 ```bash
 docker compose down -v
